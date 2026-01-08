@@ -1,0 +1,148 @@
+name: Create Native Version Branch
+
+on:
+  push:
+    tags:
+      - 'native@*.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  create-branch:
+    name: Create Native Version Branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          # Extract version from tag (e.g., "native@8.0.0" -> "8.0.0")
+          TAG_NAME="${{ github.ref_name }}"
+          VERSION=$(echo "$TAG_NAME" | sed 's/native@//')
+          
+          # Parse version components
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          PATCH=$(echo "$VERSION" | cut -d. -f3)
+          
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "major=$MAJOR" >> $GITHUB_OUTPUT
+          echo "minor=$MINOR" >> $GITHUB_OUTPUT
+          echo "patch=$PATCH" >> $GITHUB_OUTPUT
+          
+          echo "Tag: $TAG_NAME"
+          echo "Version: $VERSION"
+          echo "Major: $MAJOR, Minor: $MINOR, Patch: $PATCH"
+
+      - name: Verify major release
+        id: verify
+        run: |
+          # Double-check that this is indeed a major release (safety check)
+          # Since we're using 'native@*.0.0' pattern, this should always be true
+          MINOR="${{ steps.version.outputs.minor }}"
+          PATCH="${{ steps.version.outputs.patch }}"
+          
+          if [ "$MINOR" != "0" ] || [ "$PATCH" != "0" ]; then
+            echo "::error::Tag ${{ steps.version.outputs.tag_name }} does not match expected major release format (x.0.0)"
+            echo "Minor: $MINOR, Patch: $PATCH"
+            exit 1
+          fi
+          
+          echo "is_major_release=true" >> $GITHUB_OUTPUT
+          echo "✓ Confirmed major release: ${{ steps.version.outputs.tag_name }}"
+
+      - name: Calculate previous major version
+        id: previous
+        if: steps.verify.outputs.is_major_release == 'true'
+        run: |
+          MAJOR="${{ steps.version.outputs.major }}"
+          PREVIOUS_MAJOR=$((MAJOR - 1))
+          
+          echo "previous_major=$PREVIOUS_MAJOR" >> $GITHUB_OUTPUT
+          echo "Current major: $MAJOR"
+          echo "Previous major: $PREVIOUS_MAJOR"
+
+      - name: Find last tag from previous major version
+        id: find_tag
+        if: steps.verify.outputs.is_major_release == 'true'
+        run: |
+          PREVIOUS_MAJOR="${{ steps.previous.outputs.previous_major }}"
+          
+          # Find the latest tag matching native@{previous_major}.*.*
+          LAST_TAG=$(git tag -l "native@${PREVIOUS_MAJOR}.*.*" | sort -V | tail -n 1)
+          
+          if [ -z "$LAST_TAG" ]; then
+            echo "No tags found for previous major version $PREVIOUS_MAJOR"
+            echo "This might be the first major release or tags don't exist"
+            exit 1
+          fi
+          
+          echo "last_tag=$LAST_TAG" >> $GITHUB_OUTPUT
+          echo "Found last tag from previous major version: $LAST_TAG"
+          
+          # Get the commit SHA of the tag
+          TAG_COMMIT=$(git rev-list -n 1 "$LAST_TAG")
+          echo "tag_commit=$TAG_COMMIT" >> $GITHUB_OUTPUT
+          echo "Tag commit SHA: $TAG_COMMIT"
+
+      - name: Check if branch already exists
+        id: check_branch
+        if: steps.verify.outputs.is_major_release == 'true'
+        run: |
+          PREVIOUS_MAJOR="${{ steps.previous.outputs.previous_major }}"
+          BRANCH_NAME="native/$PREVIOUS_MAJOR"
+          
+          # Check if branch exists locally or remotely
+          if git show-ref --verify --quiet refs/heads/"$BRANCH_NAME" || \
+             git ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null 2>&1; then
+            echo "branch_exists=true" >> $GITHUB_OUTPUT
+            echo "Branch $BRANCH_NAME already exists"
+          else
+            echo "branch_exists=false" >> $GITHUB_OUTPUT
+            echo "Branch $BRANCH_NAME does not exist, will create it"
+          fi
+          
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+
+      - name: Create branch from previous major tag
+        if: |
+          steps.verify.outputs.is_major_release == 'true' &&
+          steps.check_branch.outputs.branch_exists == 'false'
+        run: |
+          BRANCH_NAME="${{ steps.check_branch.outputs.branch_name }}"
+          TAG_COMMIT="${{ steps.find_tag.outputs.tag_commit }}"
+          LAST_TAG="${{ steps.find_tag.outputs.last_tag }}"
+          
+          echo "Creating branch $BRANCH_NAME from tag $LAST_TAG (commit $TAG_COMMIT)"
+          
+          # Create branch from the tag commit
+          git checkout -b "$BRANCH_NAME" "$TAG_COMMIT"
+          
+          echo "✓ Branch $BRANCH_NAME created successfully"
+
+      - name: Push branch to remote
+        if: |
+          steps.verify.outputs.is_major_release == 'true' &&
+          steps.check_branch.outputs.branch_exists == 'false'
+        run: |
+          BRANCH_NAME="${{ steps.check_branch.outputs.branch_name }}"
+          
+          echo "Pushing branch $BRANCH_NAME to remote..."
+          git push origin "$BRANCH_NAME"
+          
+          echo "✓ Branch $BRANCH_NAME pushed successfully"
+
+      - name: Summary
+        if: always() && steps.verify.outputs.is_major_release == 'true'
+        run: |
+          if [ "${{ steps.check_branch.outputs.branch_exists }}" == "true" ]; then
+            echo "::notice title=Branch Already Exists::Branch ${{ steps.check_branch.outputs.branch_name }} already exists, skipping creation"
+          else
+            echo "::notice title=Branch Created::Successfully created branch ${{ steps.check_branch.outputs.branch_name }} from tag ${{ steps.find_tag.outputs.last_tag }}"
+          fi
