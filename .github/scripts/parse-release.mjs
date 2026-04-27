@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const fs = require('fs');
+import { appendFileSync } from 'fs';
 
 const prBody = process.env.PR_BODY || '';
 const lines = prBody.replace(/\r\n/g, '\n').split('\n');
@@ -43,11 +43,11 @@ const devsJson = JSON.stringify(devsArray);
 
 const githubOutput = process.env.GITHUB_OUTPUT;
 if (githubOutput) {
-  fs.appendFileSync(githubOutput, `found=true\n`);
-  fs.appendFileSync(githubOutput, `app=bet-client\n`);
-  fs.appendFileSync(githubOutput, `version=${version}\n`);
-  fs.appendFileSync(githubOutput, `devs_formatted=${devsFormatted}\n`);
-  fs.appendFileSync(githubOutput, `devs_json=${devsJson}\n`);
+  appendFileSync(githubOutput, `found=true\n`);
+  appendFileSync(githubOutput, `app=bet-client\n`);
+  appendFileSync(githubOutput, `version=${version}\n`);
+  appendFileSync(githubOutput, `devs_formatted=${devsFormatted}\n`);
+  appendFileSync(githubOutput, `devs_json=${devsJson}\n`);
 }
 
 console.log(`app: bet-client@${version}`);

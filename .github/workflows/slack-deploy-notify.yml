@@ -11,11 +11,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
       - name: Parse release PR body
         id: parse
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: node .github/scripts/parse-release.js
+        run: node .github/scripts/parse-release.mjs
 
       - name: Post Slack message
         id: post_message
