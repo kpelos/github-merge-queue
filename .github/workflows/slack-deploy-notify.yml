@@ -34,17 +34,6 @@ jobs:
           payload: |
             channel: "${{ env.SLACK_CHANNEL_ID }}"
             text: "🚀 Deploy ${{ steps.parse.outputs.app }}@${{ steps.parse.outputs.version }}\nPR: ${{ github.event.pull_request.html_url }}\nDevelopers:\n${{ steps.parse.outputs.devs_formatted }}"
-
-      - name: Update message with metadata
-        if: steps.parse.outputs.found == 'true'
-        uses: slackapi/slack-github-action@v2
-        with:
-          method: chat.update
-          token: ${{ secrets.SLACK_DEPLOY_TRACKER_BOT_TOKEN }}
-          payload: |
-            channel: "${{ fromJSON(steps.post_message.outputs.response).channel }}"
-            ts: "${{ fromJSON(steps.post_message.outputs.response).ts }}"
-            text: "🚀 Deploy ${{ steps.parse.outputs.app }}@${{ steps.parse.outputs.version }}\nPR: ${{ github.event.pull_request.html_url }}\nDevelopers:\n${{ steps.parse.outputs.devs_formatted }}"
             metadata:
               event_type: "release"
               event_payload:
@@ -53,3 +42,22 @@ jobs:
                 prNumber: ${{ github.event.pull_request.number }}
                 prUrl: "${{ github.event.pull_request.html_url }}"
                 devs: '${{ steps.parse.outputs.devs_json }}'
+
+      # - name: Update message with metadata
+      #   if: steps.parse.outputs.found == 'true'
+      #   uses: slackapi/slack-github-action@v2
+      #   with:
+      #     method: chat.update
+      #     token: ${{ secrets.SLACK_DEPLOY_TRACKER_BOT_TOKEN }}
+      #     payload: |
+      #       channel: "${{ fromJSON(steps.post_message.outputs.response).channel }}"
+      #       ts: "${{ fromJSON(steps.post_message.outputs.response).ts }}"
+      #       text: "🚀 Deploy ${{ steps.parse.outputs.app }}@${{ steps.parse.outputs.version }}\nPR: ${{ github.event.pull_request.html_url }}\nDevelopers:\n${{ steps.parse.outputs.devs_formatted }}"
+      #       metadata:
+      #         event_type: "release"
+      #         event_payload:
+      #           app: "${{ steps.parse.outputs.app }}"
+      #           version: "${{ steps.parse.outputs.version }}"
+      #           prNumber: ${{ github.event.pull_request.number }}
+      #           prUrl: "${{ github.event.pull_request.html_url }}"
+      #           devs: '${{ steps.parse.outputs.devs_json }}'
