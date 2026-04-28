@@ -5,7 +5,8 @@ import { appendFileSync } from 'fs';
 const prBody = process.env.PR_BODY || '';
 const lines = prBody.replace(/\r\n/g, '\n').split('\n');
 
-const packagePattern = /^([a-zA-Z][a-zA-Z0-9-]*)@(\d+\.\d+\.\d+)$/;
+// Matches both plain "bet-client@1.2.3" and markdown "## bet-client@1.2.3"
+const packagePattern = /^#{0,6}\s*([a-zA-Z][a-zA-Z0-9-]*)@(\d+\.\d+\.\d+)$/;
 
 let inBetClient = false;
 let version = null;
@@ -26,7 +27,8 @@ for (const line of lines) {
   }
 
   if (inBetClient) {
-    for (const match of trimmed.matchAll(/Thanks @([a-zA-Z0-9-]+)!/g)) {
+    // Matches "Thanks @user!" and "Thanks [@user](url)!"
+    for (const match of trimmed.matchAll(/Thanks \[?@([a-zA-Z0-9-]+)\]?(?:\([^)]*\))?!/g)) {
       devs.add(match[1]);
     }
   }
