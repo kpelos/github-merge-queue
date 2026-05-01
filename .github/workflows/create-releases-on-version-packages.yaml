@@ -1,0 +1,114 @@
+name: Create Releases on Version Packages Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  create-releases:
+    if: |
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.ref == 'changeset-release/main' &&
+      startsWith(github.event.pull_request.title, 'Version Packages')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse PR body and create tags + releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          python3 << 'PYTHON'
+          import os
+          import re
+          import subprocess
+          import sys
+
+          body = os.environ.get("PR_BODY", "")
+          if not body:
+              print("PR body is empty, nothing to do.")
+              sys.exit(0)
+
+          # Split sections by lines starting with "## "
+          # Each section starts at a "## package@version" header
+          sections = re.split(r"(?m)(?=^## )", body)
+
+          created = []
+          skipped = []
+          failed = []
+
+          for section in sections:
+              lines = section.strip().splitlines()
+              if not lines:
+                  continue
+
+              header = lines[0].strip()
+              # Match "## package@version" — accepts scoped (@org/pkg) and unscoped
+              match = re.match(r"^##\s+(@?[A-Za-z0-9_./-]+@[\d]+\.[.\d\w-]+)\s*$", header)
+              if not match:
+                  continue
+
+              tag = match.group(1).strip()
+              notes = "\n".join(lines[1:]).strip() or f"Release {tag}"
+
+              print(f"\n── {tag}")
+
+              # Create annotated tag
+              tag_result = subprocess.run(
+                  ["git", "tag", "-a", tag, "-m", f"Release {tag}"],
+                  capture_output=True,
+                  text=True,
+              )
+              if tag_result.returncode != 0:
+                  print(f"   tag: already exists or error — {tag_result.stderr.strip()}")
+              else:
+                  push_result = subprocess.run(
+                      ["git", "push", "origin", tag],
+                      capture_output=True,
+                      text=True,
+                  )
+                  if push_result.returncode != 0:
+                      print(f"   push: {push_result.stderr.strip()}")
+                  else:
+                      print(f"   tag pushed ✓")
+
+              # Create GitHub release
+              gh_result = subprocess.run(
+                  [
+                      "gh", "release", "create", tag,
+                      "--title", tag,
+                      "--notes", notes,
+                  ],
+                  capture_output=True,
+                  text=True,
+              )
+              if gh_result.returncode != 0:
+                  err = gh_result.stderr.strip()
+                  if "already exists" in err:
+                      print(f"   release: already exists, skipping")
+                      skipped.append(tag)
+                  else:
+                      print(f"   release: FAILED — {err}")
+                      failed.append(tag)
+              else:
+                  print(f"   release: {gh_result.stdout.strip()} ✓")
+                  created.append(tag)
+
+          print("\n─────────────────────────────────")
+          print(f"Created : {len(created)}")
+          print(f"Skipped : {len(skipped)}")
+          print(f"Failed  : {len(failed)}")
+          if failed:
+              print(f"Failures: {', '.join(failed)}")
+              sys.exit(1)
+          PYTHON
