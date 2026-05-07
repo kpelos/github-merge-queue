@@ -1,1 +1,1 @@
-bet-client@6.11.0
+bet-client@6.12.0
